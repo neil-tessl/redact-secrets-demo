@@ -1,0 +1,10 @@
+{
+  "name": "tessl-labs/redact-secrets",
+  "version": "0.1.0",
+  "summary": "Detect and redact secrets in text — API keys, tokens, credentials",
+  "skills": {
+    "redact-secrets": {
+      "path": "skills/redact-secrets/SKILL.md"
+    }
+  }
+}
