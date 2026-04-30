@@ -1,0 +1,41 @@
+{
+  "context": "Tests whether the agent redacts the body of a private key block in a stack trace, while leaving the BEGIN/END markers and surrounding diagnostic lines intact.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "BEGIN marker preserved",
+      "max_score": 8,
+      "description": "The `-----BEGIN RSA PRIVATE KEY-----` line is present in the output exactly as-is."
+    },
+    {
+      "name": "END marker preserved",
+      "max_score": 8,
+      "description": "The `-----END RSA PRIVATE KEY-----` line is present in the output exactly as-is."
+    },
+    {
+      "name": "Key body redacted",
+      "max_score": 14,
+      "description": "All four base64 lines that made up the body of the original RSA key are removed. The output does not contain any of `MIIEowIBAAKCAQ`, `Db49S92AMbxe`, `gd+Tpd+JZRHmAOgy`, or `1YxTOfXof4D6`."
+    },
+    {
+      "name": "Body replaced with single placeholder",
+      "max_score": 8,
+      "description": "Between the BEGIN and END marker lines there is exactly one placeholder line (e.g. `[REDACTED]`) — the original four-line body is not preserved or padded with multiple placeholders."
+    },
+    {
+      "name": "Stack trace lines preserved",
+      "max_score": 10,
+      "description": "The lines `SSHException: Private key file is encrypted`, `File \"deploy.py\", line 42, in connect`, and the `key = paramiko.RSAKey.from_private_key(...)` line all appear in the output unchanged."
+    },
+    {
+      "name": "Server fingerprint preserved",
+      "max_score": 6,
+      "description": "The `Server fingerprint: SHA256:...` line is preserved unchanged — fingerprints of public host keys are not secrets."
+    },
+    {
+      "name": "No extra commentary",
+      "max_score": 6,
+      "description": "The output contains only the redacted snippet — no preamble like 'Here is the safe version' and no trailing summary."
+    }
+  ]
+}

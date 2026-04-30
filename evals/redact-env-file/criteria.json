@@ -1,0 +1,41 @@
+{
+  "context": "Tests whether the agent scrubs only secrets from the env file and leaves non-sensitive values intact, in the format produced by the redact-secrets skill.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "DATABASE_URL password redacted",
+      "max_score": 10,
+      "description": "The DATABASE_URL password component (`hunter2`) is replaced with a placeholder; the rest of the connection string (user, host, port, db name) is kept intact."
+    },
+    {
+      "name": "GITHUB_TOKEN redacted with prefix preserved",
+      "max_score": 10,
+      "description": "The GITHUB_TOKEN value is redacted but the `ghp_` prefix is kept so the token kind is identifiable."
+    },
+    {
+      "name": "SLACK_BOT_TOKEN redacted with prefix preserved",
+      "max_score": 10,
+      "description": "The SLACK_BOT_TOKEN value is redacted but the `xoxb-` prefix is kept."
+    },
+    {
+      "name": "USER_ID UUID is NOT redacted",
+      "max_score": 10,
+      "description": "The USER_ID value (a UUID, `018f1c2a-9d4b-7e91-aaaa-bbbbcccc1111`) is preserved unchanged — UUIDs are not secrets."
+    },
+    {
+      "name": "Non-sensitive values preserved",
+      "max_score": 8,
+      "description": "LOG_LEVEL, ENVIRONMENT, and PUBLIC_API_URL keep their original values exactly. None of them is redacted."
+    },
+    {
+      "name": "Line order and structure preserved",
+      "max_score": 6,
+      "description": "Output contains the same number of lines as the input, in the same order, each in `KEY=VALUE` shape."
+    },
+    {
+      "name": "No extra commentary",
+      "max_score": 6,
+      "description": "The output contains only the env lines — no preamble like 'Here is the redacted version', no trailing notes about what was redacted."
+    }
+  ]
+}
