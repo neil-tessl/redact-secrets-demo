@@ -11,15 +11,41 @@ When the user asks you to share, summarise, or paste any block of text — logs,
 
 Treat any of these as a secret:
 
-- **API keys / tokens**: long random strings prefixed by a known vendor scheme (`sk-`, `xoxb-`, `xoxp-`, `ghp_`, `gho_`, `ghu_`, `ghs_`, `github_pat_`, `glpat-`, `AIza`, `AKIA`)
+- **API keys / tokens by vendor prefix**:
+  - GitHub: `ghp_`, `gho_`, `ghu_`, `ghs_`, `github_pat_`
+  - GitLab: `glpat-`
+  - Slack: `xoxb-`, `xoxp-`, `xapp-`, `xoxe.xoxb-`
+  - OpenAI / Anthropic: `sk-`, `sk-ant-`
+  - Stripe: `sk_live_`, `sk_test_`, `rk_live_`, `whsec_`
+  - Google API keys: `AIza` (39 chars total)
+  - npm: `npm_` (40 chars)
+  - Cloudflare: `cfat-`, `cfsk-`
+  - SendGrid: `SG.`
+  - Twilio: `AC` followed by 32 hex chars (account SID is also sensitive in combination with the token)
 - **JWTs**: three base64url segments separated by `.`, where the first segment decodes to JSON containing `alg`
-- **AWS credentials**: `AKIA[0-9A-Z]{16}` access key IDs and the 40-character secret access keys that accompany them
-- **OAuth bearer tokens**: anything passed in `Authorization: Bearer …`
-- **Connection strings**: `postgres://user:password@host/db`, `mongodb+srv://…`, `mysql://…` — replace the password component, keep the rest
-- **Private keys**: anything between `-----BEGIN … PRIVATE KEY-----` and `-----END … PRIVATE KEY-----`
-- **Generic high-entropy strings**: ≥32 chars of mixed case + digits + symbols, where the surrounding context (variable name, comment, key name) suggests a credential — `secret`, `token`, `key`, `password`, `credential`, `auth`
+- **AWS credentials**: `AKIA[0-9A-Z]{16}` access key IDs and the 40-character secret access keys that accompany them; treat session tokens prefixed `ASIA` the same way
+- **Google service-account JSON**: any JSON containing `"type": "service_account"` and a `"private_key"` field — redact the whole block, not just the key field
+- **OAuth bearer tokens**: anything passed in `Authorization: Bearer …` — redact the token portion, keep the `Bearer ` prefix
+- **Basic-auth headers**: `Authorization: Basic <base64>` — redact the base64 segment
+- **Connection strings**: `postgres://user:password@host/db`, `mongodb+srv://…`, `mysql://…`, `redis://…`, `amqp://…` — replace the password component, keep the rest
+- **Private keys**: anything between `-----BEGIN … PRIVATE KEY-----` and `-----END … PRIVATE KEY-----` (RSA, EC, OPENSSH, PGP)
+- **SSH known-hosts / authorized-keys lines** containing private fingerprints from the user's machine
+- **Webhook secrets / signing keys**: high-entropy values next to keys named `signing_secret`, `webhook_secret`, `hmac_key`, `signature`
+- **Generic high-entropy strings**: ≥32 chars of mixed case + digits + symbols, where the surrounding context (variable name, comment, key name, header name, JSON path) suggests a credential — `secret`, `token`, `key`, `password`, `credential`, `auth`, `api_key`, `access_token`, `refresh_token`
 
-Don't redact: UUIDs, git commit SHAs, public URLs, hashes of public artefacts, well-known constants (zero-vectors, all-ones), or strings the user explicitly says are non-sensitive.
+Don't redact: UUIDs, git commit SHAs, public URLs, hashes of public artefacts, well-known constants (zero-vectors, all-ones), public SSH host keys / fingerprints already published in DNS or on the host's website, or strings the user explicitly says are non-sensitive.
+
+## Contextual cues that escalate suspicion
+
+A short or low-entropy value that wouldn't normally trigger redaction should still be redacted when the surrounding context suggests it's a credential:
+
+- Variable name contains `password`, `passwd`, `pwd`, `secret`, `token`, `key`, `apikey`, `credential`, `auth` (case-insensitive)
+- It appears after `=` in a `.env` / `.envrc` / `.secrets` file, or under a `secrets:` / `credentials:` YAML key
+- It's a value for an HTTP header named `Authorization`, `X-API-Key`, `X-Auth-Token`, `Cookie` (when the cookie is named `session`, `auth`, `jwt`, `token`)
+- It's in a `Set-Cookie` header for a session-shaped cookie
+- It's in a URL query parameter named `token`, `access_token`, `api_key`, `signature`, `sig`
+
+When in doubt in these contexts, redact.
 
 ## How to redact
 
@@ -41,7 +67,21 @@ If you scan and find nothing, output the original text unchanged. Don't add a "n
 
 If a string looks suspicious but you can't classify it confidently (e.g., a 40-char hex string with no surrounding context), redact it and add a single trailing comment line: `# 1 ambiguous string redacted at line N`. Surface ambiguity rather than hide it.
 
+## Code blocks vs prose
+
+When the secret appears inside a fenced code block or otherwise machine-readable region, redact in-place — don't rewrap, don't drop or add backticks, don't add prose annotations inside the block. When the secret appears in surrounding prose ("the API key is `sk-abc...`"), redact the value but keep the prose readable; an inline note like *"(redacted)"* in parentheses is acceptable here.
+
+## Common mistakes to avoid
+
+- **Don't replace the variable name too.** `GITHUB_TOKEN=[REDACTED]` is right; `[REDACTED]=[REDACTED]` is not.
+- **Don't redact the same value twice with different placeholders.** If the same token appears 3 times in the input, every occurrence should reduce to the same `[REDACTED]` form so the reader can tell they refer to the same secret.
+- **Don't try to "be helpful" by reconstructing what the secret would have been** ("looks like an OpenAI key starting with sk-XXX") — that defeats the purpose. The kind hint in the prefix is fine; anything beyond that leaks information.
+- **Don't drop secrets from logs silently** by removing the line. Keeping the line with a redacted value preserves the log's structure and tells the reader where the secret was.
+- **Don't redact values the user has explicitly opted out of.** If they say "the host db.internal is fine to share, just hide the password", honour that.
+
 ## Examples
+
+### Env file
 
 Input:
 ```
@@ -58,3 +98,45 @@ GITHUB_TOKEN=ghp_AbCd[REDACTED]
 # user_id is fine to share
 USER_ID=018f1c2a-9d4b-7e91-aaaa-bbbbcccc1111
 ```
+
+### HTTP request log
+
+Input:
+```
+POST /v1/charges HTTP/1.1
+Host: api.stripe.com
+Authorization: Bearer sk_live_FAKE_DEMO_NOT_A_REAL_KEY_123
+Content-Type: application/x-www-form-urlencoded
+Idempotency-Key: 87b2eaba-3f9c-4f2e-8b6e-19c6a2b71b2e
+
+amount=2000&currency=usd
+```
+
+Output:
+```
+POST /v1/charges HTTP/1.1
+Host: api.stripe.com
+Authorization: Bearer sk_live_FAKE[REDACTED]
+Content-Type: application/x-www-form-urlencoded
+Idempotency-Key: 87b2eaba-3f9c-4f2e-8b6e-19c6a2b71b2e
+
+amount=2000&currency=usd
+```
+
+(Idempotency key is a UUID — not a secret. Authorization header value is.)
+
+### JWT in a Set-Cookie
+
+Input:
+```
+HTTP/1.1 200 OK
+Set-Cookie: session=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyXzEyMyIsImV4cCI6MTcyMDAwMDAwMH0.abc123signature; HttpOnly; Secure; Path=/
+```
+
+Output:
+```
+HTTP/1.1 200 OK
+Set-Cookie: session=[REDACTED]; HttpOnly; Secure; Path=/
+```
+
+(Whole JWT redacted as one unit. Cookie attributes preserved.)
